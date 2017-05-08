@@ -61,6 +61,13 @@ public:
    void end() { stopListening(); }
    bool isListening() { return m_rxEnabled; }
    bool stopListening() { enableRx(false); return true; }
+   
+   bool inPacket = false;
+   unsigned long startPacket;
+   unsigned long last;
+   bool receivedStart = false;
+   int stage = 0; // bit to get
+   uint8_t packet = 0;
 
    using Print::write;
 

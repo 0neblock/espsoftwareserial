@@ -197,28 +197,68 @@ int SoftwareSerial::peek() {
 }
 
 void ICACHE_RAM_ATTR SoftwareSerial::rxRead() {
-   // Advance the starting point for the samples but compensate for the
-   // initial delay which occurs before the interrupt is delivered
-   unsigned long wait = m_bitTime + m_bitTime/3 - 500;
-   unsigned long start = ESP.getCycleCount();
-   uint8_t rec = 0;
-   for (int i = 0; i < 8; i++) {
-     WAIT;
-     rec >>= 1;
-     if (digitalRead(m_rxPin))
-       rec |= 0x80;
-   }
-   if (m_invert) rec = ~rec;
-   // Stop bit
-   WAIT;
-   // Store the received value in the buffer unless we have an overflow
-   int next = (m_inPos+1) % m_buffSize;
-   if (next != m_outPos) {
-      m_buffer[m_inPos] = rec;
-      m_inPos = next;
-   } else {
-      m_overflow = true;
-   }
+   if(inPacket){
+        unsigned long now = ESP.getCycleCount();
+        if(now - last > m_bitTime*10){
+//            return;
+            // fucked
+            startPacket = ESP.getCycleCount();
+            last = startPacket - m_bitTime/2;
+            packet = 0;
+            stage = 0;
+            inPacket = true;
+            Serial.println("BAD");
+        } else if(now - last >= m_bitTime){
+            if(stage >= 7){
+                // this is stop bit
+//                packet <<= 1;
+//                packet |= 0x01;
+                packet >>= 2;
+                packet = ~packet;
+                packet &= 0b00111111;
+                int next = (m_inPos+1) % m_buffSize;
+               if (next != m_outPos) {
+                  m_buffer[m_inPos] = packet;
+                  m_inPos = next;
+               } else {
+                  m_overflow = true;
+               }
+                inPacket = false;
+                Serial.println(packet);
+                stage = 0;
+            } else {
+//                if(stage == 0){
+//                    stage++;
+//                } else {
+                    // it's been at least bit_time since last, need to figure out how many
+                int num = ((now-last) / m_bitTime);
+//                Serial.print(num);Serial.print(",");
+                stage+=num;
+                if(num > 0 && num < 8){
+                    for(int i = 0; i < num; i++){
+                        packet >>= 1;
+                        if(digitalRead(m_rxPin)) {
+                            packet |= 0x80;
+    //                        Serial.print('1');
+                        } else {
+    //                        Serial.print('0');
+                        }
+                    }
+                } else {
+                    stage = 7;
+                }
+                
+                last = now - 100;
+//                }
+                
+            }
+        }
+    } else {
+        startPacket = ESP.getCycleCount();
+        last = startPacket - m_bitTime/2;
+        packet = 0;
+        inPacket = true;
+    }
    // Must clear this bit in the interrupt register,
    // it gets set even when interrupts are disabled
    GPIO_REG_WRITE(GPIO_STATUS_W1TC_ADDRESS, 1 << m_rxPin);
